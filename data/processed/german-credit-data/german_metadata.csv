@@ -1,0 +1,21 @@
+variable,type,description
+A01,qualitative,Status of existing checking account
+A02,numerical,Duration in month
+A03,qualitative,Credit history
+A04,qualitative,Purpose
+A05,numerical,Credit amount
+A06,qualitative,Savings account/bonds
+A07,qualitative,Present employment since
+A08,numerical,Installment rate in percentage of disposable income
+A09,qualitative,Personal status and sex
+A10,qualitative,Other debtors / guarantors
+A11,numerical,Present residence since
+A12,qualitative,Property
+A13,numerical,Age in years
+A14,qualitative,Other installment plans
+A15,qualitative,Housing
+A16,numerical,Number of existing credits at this bank
+A17,qualitative,Job
+A18,numerical,Number of people being liable to provide maintenance for
+A19,qualitative,Telephone
+A20,qualitative,foreign worker
