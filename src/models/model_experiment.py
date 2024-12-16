@@ -2,15 +2,17 @@ import pandas as pd
 import time
 import pickle
 import csv
+import warnings
 
 from tqdm import tqdm
 from multiprocessing import Pool
 
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.neighbors import KNeighborsClassifier
+
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.metrics import precision_score, recall_score
 from sklearn.metrics import roc_auc_score, confusion_matrix
+from sklearn.exceptions import ConvergenceWarning
 from pathlib import Path
 from datetime import datetime
 from itertools import product, islice
@@ -22,8 +24,12 @@ from src.models.model_parameters import  models_and_parameters
 def get_parameters_gen(dic_parameters):
     """ Changes dictionary to generate combination of parameters to list of dictionaries
     """
-    for combination in product(*dic_parameters.values()):
-        yield dict(zip(dic_parameters.keys(), combination))
+    if isinstance(dic_parameters, dict):
+        for combination in product(*dic_parameters.values()):
+            yield dict(zip(dic_parameters.keys(), combination))
+    else:
+        for combination in dic_parameters:
+            yield combination
 
 def get_output_folder(model_key) -> Path:
     now = datetime.now()
@@ -108,13 +114,20 @@ def experiment_one_fold(model, X_train, X_test, y_train, y_test):
     for train_test in ['train', 'test']:
         dic_metrics_to_add[train_test] = dict()
         for metric in lst_metrics:
-            met_value = round(float(metric(*dic_variables[train_test])),8)
+
+            if metric.__name__ == 'precision_score':
+                met_value = round(float(metric(*dic_variables[train_test], zero_division = 0.0)),8)
+            else:
+                met_value = round(float(metric(*dic_variables[train_test])),8)
             dic_experiment.update({f'{metric.__name__}_{train_test}':met_value})
     return(dic_experiment)
 
 def german_experiment(model_key = 'knn', max_params = 100):
     """ Experiment of German Credit Data with multiprocess
     """
+    
+    warnings.filterwarnings("ignore", category=ConvergenceWarning)
+    
     csv_data = 'data/processed/german-credit-data/german.csv'
     lst_numeric = get_list_of_numerical_variables()
     df = pd.read_csv(csv_data, dtype={x:float for x in lst_numeric})
@@ -124,13 +137,12 @@ def german_experiment(model_key = 'knn', max_params = 100):
         dic_folds[fold_n] = get_data_by_fold(f'fold{fold_n:02d}')
         
     lst_train_test = train_test_folds(df, dic_folds, lst_numeric)
-    dic_models_and_parameters = models_and_parameters() # this is slow
-    gen_parameters = get_parameters_gen(dic_models_and_parameters[model_key]['parameters'])
 
+    gen_models = models_and_parameters(model_key, n_test = 100)
     if max_params is None:
-        lst_models = [(model_num, KNeighborsClassifier(**dic_parameters)) for model_num, dic_parameters in enumerate(gen_parameters)]
+        lst_models = [(model_num, model) for model_num, model in enumerate(gen_models)]
     else:
-        lst_models = [(model_num, KNeighborsClassifier(**dic_parameters)) for model_num, dic_parameters in enumerate(gen_parameters) if model_num < max_params]
+        lst_models = [(model_num, model) for model_num, model in enumerate(gen_models) if model_num < max_params]
     experiment_all_folds_partial = partial(experiment_all_folds, lst_train_test)
    
     lst_folds_all = []
@@ -141,7 +153,7 @@ def german_experiment(model_key = 'knn', max_params = 100):
     dir_output_model.mkdir(parents=True, exist_ok=True)
     
     with Pool() as pool:
-        results = pool.imap_unordered(experiment_all_folds_partial, lst_models, chunksize=100)
+        results = pool.imap_unordered(experiment_all_folds_partial, lst_models, chunksize=1_000)
         for result_n, (dic_means, lst_experiments) in enumerate(tqdm(results, total=len(lst_models)), start=1):
             lst_means_all.append(dic_means)
             lst_folds_all += lst_experiments

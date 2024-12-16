@@ -89,5 +89,5 @@ target/
 .mypy_cache/
 
 # specific folder
-reports/german-credit-data/knn/*
 *_old.py
+reports/**/[0-9]*.csv
