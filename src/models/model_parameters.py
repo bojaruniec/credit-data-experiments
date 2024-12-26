@@ -126,7 +126,7 @@ def models_and_parameters(model_key='knn', n_test=100):
             dic_model_and_parameters['model'] = Perceptron
             dic_model_and_parameters['parameters']  = {
                     'penalty': ['l1', 'l2', 'elasticnet', None],
-                    'alpha' : [0.0001, 0.01, None],
+                    'alpha' : [0.0001, 0.01, 0.1],
                     'l1_ratio': np.arange(0,1, 0.25), 
                     'max_iter': np.arange(1, 1000, 100), 
                     'tol': [None, 1e-3, 1e-6, 1e-1],
@@ -142,9 +142,9 @@ def models_and_parameters(model_key='knn', n_test=100):
                     'warm_start':[True, False],}
             
             def f_perceptron_kryteria(x):
-                if x['penalty'] is not None and x['alpha'] is None:
+                if x['penalty'] is not None and x['alpha'] == 0.1:
                     return False
-                elif x['penalty'] is None and x['alpha'] is not None:
+                elif x['penalty'] is None and x['alpha'] != 0.1:
                     return False
                 else:
                     pass
@@ -163,7 +163,6 @@ def models_and_parameters(model_key='knn', n_test=100):
     if dic_model_and_parameters['filter'] is None:
         for combination in product(*dic_model_and_parameters['parameters'].values()):
             dic_combination = dict(zip(dic_model_and_parameters['parameters'].keys(), combination))
-            print(dic_model_and_parameters['model'])
             yield dic_model_and_parameters['model'](**dic_combination)
     else:
         for combination in product(*dic_model_and_parameters['parameters'].values()):
@@ -173,12 +172,10 @@ def models_and_parameters(model_key='knn', n_test=100):
                 
 
 if __name__ == "__main__":
-    dic_models_and_parameters = models_and_parameters('knn', n_test=100)
-    lst= list(dic_models_and_parameters)
-    print(len(lst))
+    lst_models = ['decision-tree', 'knn', 'logistic-regression', 'random-forest', 'perceptron']
     
-    dic_models_and_parameters = models_and_parameters('random-forest', n_test=100)
-    lst= list(dic_models_and_parameters)
-    next(dic_models_and_parameters)
+    for model_key in lst_models:
+        print(f'{model_key}: {len(list(models_and_parameters(model_key))):,}')
+    
 
     

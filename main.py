@@ -1,9 +1,11 @@
 from src.models.model_experiment import german_experiment
+from src.models.model_repair_two_parts import calclulate_means_from_existing
 
 if __name__ == "__main__":
-    # german_experiment('knn', None)
-    # german_experiment('decision-tree', None)
-    # german_experiment('logistic-regression', None)
-    # german_experiment('random-forest', None)
-    german_experiment('perceptron', None)
+    german_experiment('knn', None)
+    german_experiment('decision-tree', None)
+    german_experiment('logistic-regression', None)
+    german_experiment('random-forest')
+    german_experiment('perceptron')
+    
     

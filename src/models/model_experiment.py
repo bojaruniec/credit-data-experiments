@@ -56,8 +56,11 @@ def experiment_all_folds(lst_train_test, model_num_and_model:tuple) -> tuple:
     lst_output_folds = []
     lst_experiments = []
     for fold_n, (X_train, y_train, X_test, y_test) in enumerate(lst_train_test):
-        dic_experiment = experiment_one_fold(model, X_train, X_test, y_train, y_test)
-        lst_experiments.append({'model_num': model_num, 'fold':fold_n,}|dic_experiment)
+        try:
+            dic_experiment = experiment_one_fold(model, X_train, X_test, y_train, y_test)
+            lst_experiments.append({'model_num': model_num, 'fold':fold_n,}|dic_experiment)
+        except Exception as e:
+            print(f'Error: {e}')
     dic_means = pd.DataFrame.from_dict(lst_experiments).mean().round(8).to_dict()
     
     dic_means_to_return = {'model_num': int(model_num)} | {'model_class': model.__class__.__name__} | dict(model.get_params()) | dic_means
@@ -87,6 +90,7 @@ def experiment_one_fold(model, X_train, X_test, y_train, y_test):
     dic_experiment = dict()
     
     start_time = time.time()
+    
     model.fit(X_train, y_train)
     end_time = time.time()
     time_train = end_time - start_time 
@@ -122,7 +126,7 @@ def experiment_one_fold(model, X_train, X_test, y_train, y_test):
             dic_experiment.update({f'{metric.__name__}_{train_test}':met_value})
     return(dic_experiment)
 
-def german_experiment(model_key = 'knn', max_params = 100):
+def german_experiment(model_key = 'knn', model_num_start = None, model_num_stop = None):
     """ Experiment of German Credit Data with multiprocess
     """
     
@@ -139,26 +143,35 @@ def german_experiment(model_key = 'knn', max_params = 100):
     lst_train_test = train_test_folds(df, dic_folds, lst_numeric)
 
     gen_models = models_and_parameters(model_key, n_test = 100)
-    if max_params is None:
+    if model_num_stop is None and model_num_start is None:
         lst_models = [(model_num, model) for model_num, model in enumerate(gen_models)]
+    elif model_num_stop is not None and model_num_start is None :
+        lst_models = [(model_num, model) for model_num, model in enumerate(gen_models) if model_num < model_num_stop + 1]
+    elif model_num_stop is None and model_num_start is not None :
+        lst_models = [(model_num, model) for model_num, model in enumerate(gen_models) if model_num >= model_num_start]
     else:
-        lst_models = [(model_num, model) for model_num, model in enumerate(gen_models) if model_num < max_params]
+        lst_models = [(model_num, model) for model_num, model in enumerate(gen_models) if (model_num >= model_num_start) & (model_num < model_num_stop +1)]
+        
     experiment_all_folds_partial = partial(experiment_all_folds, lst_train_test)
    
     lst_folds_all = []
     lst_means_all = []
-    n_folds_file = 1
     
     dir_output_model = get_output_folder(model_key)
     dir_output_model.mkdir(parents=True, exist_ok=True)
     
+    num_csv_file_records = 1_000
+    num_model_num_start = model_num_start if model_num_start is not None else 0 
+    num_csv_file_start = num_model_num_start // num_csv_file_records + 1 
+    n_folds_file = num_csv_file_start
+       
     with Pool() as pool:
         results = pool.imap_unordered(experiment_all_folds_partial, lst_models, chunksize=1_000)
-        for result_n, (dic_means, lst_experiments) in enumerate(tqdm(results, total=len(lst_models)), start=1):
+        for result_n, (dic_means, lst_experiments) in enumerate(tqdm(results, total=len(lst_models)), start=num_csv_file_start):
             lst_means_all.append(dic_means)
             lst_folds_all += lst_experiments
 
-            if result_n % 1_000 == 0:
+            if result_n % num_csv_file_records == 0:
                 write_experiments_by_fold_to_csv(lst_folds_all, f"{n_folds_file:05d}", dir_output_model)
                 lst_folds_all = []
                 n_folds_file += 1
@@ -166,5 +179,6 @@ def german_experiment(model_key = 'knn', max_params = 100):
         write_experiments_by_fold_to_csv(lst_means_all, "means", dir_output_model)
         print(dir_output_model)
         
+
 if __name__ == "__main__":
     german_experiment()

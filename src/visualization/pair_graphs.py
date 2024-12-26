@@ -46,13 +46,18 @@ def pair_graphs_german():
                    'roc_auc_score_train', 'accuracy_score_test', 'f1_score_test', 
                    'precision_score_test','recall_score_test','roc_auc_score_test']
     # KNN
-    lst_graphs = [
+    lst_graphs1 = [
         ('knn', Path('reports/german-credit-data/knn/202412152158/means.csv')),
         ('decision-tree', Path('reports/german-credit-data/decision-tree/202412160820/means.csv')),
         ('logistic-regression', Path('reports/german-credit-data/logistic-regression/202412160832/means.csv')),
         ('random-forest', Path('reports/german-credit-data/random-forest/202412161052/means.csv')),
     ]
-    for model_key, csv_experiments in lst_graphs:
+    
+    lst_graphs2 = [
+        ('perceptron', Path('reports/german-credit-data/perceptron/202412162133/means.csv')),
+    ]
+    lst_graphs = lst_graphs1 + lst_graphs2
+    for model_key, csv_experiments in lst_graphs2:
         df = pd.read_csv(csv_experiments, usecols=lst_metrics, index_col='model_num')
         pair_graphs(df, model_key)
     
