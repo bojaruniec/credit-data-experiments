@@ -6,6 +6,7 @@ from tensorflow.keras.metrics import Precision, Recall, F1Score, AUC
 from tensorflow.keras.regularizers import l1, l2, l1_l2
 
 import tensorflow.keras.backend as K
+from tensorflow.keras.optimizers import Adadelta, Adafactor, Adagrad, Adam, AdamW, Adamax, Ftrl, Lion, Nadam, RMSprop, SGD   
 import numpy as np
 
 import time
@@ -16,6 +17,8 @@ import pandas as pd
 from src.data.make_dataset import get_list_of_numerical_variables, get_data_by_fold
 from src.models.model_experiment import train_test_folds
 from src.models.model_experiment import get_output_folder
+
+from itertools import product
 
 # Callback to measure training time (excluding metrics)
 class TimeHistoryWithoutMetrics(Callback):
@@ -172,6 +175,22 @@ def tf_experiment_all_folds(lst_train_test, model_num_and_model:tuple) -> tuple:
     """
     model_num, model = model_num_and_model
     lst_experiments = []
+    
+    dic_columns_rename = {
+    'accuracy':	'accuracy_score_train',
+    'auc': 'roc_auc_score_train',
+    'f1_score':	'f1_score_train',
+    'precision': 'precision_score_train',
+    'recall': 'recall_score_train',
+    'loss': 'loss_train',
+    'val_accuracy': 'accuracy_score_test',
+    'val_auc': 'roc_auc_score_test',
+    'val_f1_score': 'f1_score_test',
+    'val_precision': 'precision_score_test',
+    'val_recall': 'recall_score_train',
+    'val_loss': 'loss_train'
+    }
+    
     n_epochs = 10
     for fold_n, (X_train, y_train, X_test, y_test) in enumerate(lst_train_test):
         tf.keras.backend.clear_session()
@@ -181,12 +200,58 @@ def tf_experiment_all_folds(lst_train_test, model_num_and_model:tuple) -> tuple:
                 callbacks=[train_time_callback, prediction_time_callback, model_size_callback, model_sparsity_callback])
         df_history = pd.DataFrame({'model_num': model_num, 'fold': fold_n, 'epoch' : list(range(1, n_epochs+1))} | history.history)
         lst_experiments.append(df_history)
+    df = pd.concat(lst_experiments, axis=0)
+    df.rename(columns=dic_columns_rename, inplace=True)
+    df_means = df.loc[df['epoch'] == 10,:].mean().round(8).to_frame().T.astype({'model_num':int, 'epoch':int})
     return lst_experiments
         
 
+def gen_tf_model_parameters():
+    lst_actication_functions = ['relu', 'sigmoid', 'softmax', 'softplus', 'softsign', 'tanh', 
+                                'selu', 'elu', 'exponential', 'leaky_relu', 'relu6', 'silu', 'hard_silu',
+                                'gelu', 'hard_sigmoid', 'mish', 'log_softmax']
+    lst_regulizers = ['l1', 'l2', None]
+    dic_dense_input = {'units': [2**i for i in range(1,8)],  'activation':lst_actication_functions, 'kernel_regularizer':lst_regulizers}
+    keys = dic_dense_input.keys()
+    values = dic_dense_input.values()
+    # Create a list of dictionaries for each combination
+    lst_combinations = [dict(zip(keys, combination)) for combination in product(*values)]
+    input_layer = Input(shape=(n_dims,), name='input_layer')
+    output_layer = Dense(1, activation='sigmoid', name='output_layer')
+    # Model defined again
+    tf.random.set_seed(32)
+    tf.keras.backend.clear_session()
+    for combination in lst_combinations:
+        tf.keras.backend.clear_session()
+        tf.random.set_seed(32)
+        model = Sequential([
+            input_layer,
+            Dense(**combination, name='dense_1'),
+            output_layer,
+        ])
+        yield model
+
+for n_model, model in enumerate(gen_tf_model_parameters()):
+    print(n_model)
+    print(model.summary())
+
+
+model.summary() 
+
+adam1 = Adam()
+model.compile(optimizer= adam1,
+            loss='binary_crossentropy',
+            metrics=['accuracy', Precision(), Recall(), F1Score(), AUC()])
+
 lst_experiments = tf_experiment_all_folds(lst_train_test, (1, model))
-df = pd.concat(lst_experiments, axis=0)
-df.loc[df['epoch'] == 10,:].mean().round(8).astype({'model_num':int})
+
+
+df_means
+df
+
+
+print([opt for opt in dir(optimizers) if not opt.startswith("_")])
+
   
 #     try:
 #         dic_experiment = experiment_one_fold(model, X_train, X_test, y_train, y_test)
