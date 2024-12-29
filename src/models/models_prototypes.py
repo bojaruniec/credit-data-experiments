@@ -18,7 +18,11 @@ from src.data.make_dataset import get_list_of_numerical_variables, get_data_by_f
 from src.models.model_experiment import train_test_folds
 from src.models.model_experiment import get_output_folder
 
+from pathlib import Path
 from itertools import product
+
+tf.config.set_visible_devices([], 'GPU')
+# wyłączenie GPU
 
 # Callback to measure training time (excluding metrics)
 class TimeHistoryWithoutMetrics(Callback):
@@ -96,40 +100,6 @@ model_size_callback = PickleSizeCallback()
 model_sparsity_callback = ModelSparsityCallback()
 
 n_dims = lst_train_test[0][0].shape[1]
-# with tf.device("/GPU:0"):
-with tf.device("/CPU:0"):
-    tf.random.set_seed(32)
-    tf.keras.backend.clear_session()
-    model = Sequential([
-        Input(shape=(n_dims,), name='input_layer'),
-        Dense(128, activation='relu', name='dense_1'),
-        Dropout(0.5, seed=24),
-        Dense(64, activation='relu', name='dense_2'),
-        Dense(1, activation='sigmoid', name='dense_3') 
-    ])
-    model.compile(optimizer='adam',
-                loss='binary_crossentropy',
-                metrics=['accuracy', Precision(), Recall(), F1Score(), AUC()])
-
-    history = model.fit(lst_train_test[0][0], lst_train_test[0][1], epochs=10, 
-                        validation_data=[lst_train_test[0][2], lst_train_test[0][3]], 
-                        callbacks=[train_time_callback, prediction_time_callback, model_size_callback, model_sparsity_callback])
-
-df_history = pd.DataFrame({'fold':1, 'epoch' : list(range(1, len(history.history['accuracy'])+1))} | history.history)
-
-model.optimizer.learning_rate.numpy()
-model.optimizer.name
-dense_layers = [layer for layer in model.layers if isinstance(layer, Dense)]
-dropout_layers = [layer for layer in model.layers if isinstance(layer, Dropout)]
-dir(dense_layers[0])
-
-model.layers.count
-model.count_params()
-dense_layers[0].__class__.__name__
-
-dense_layers[0].output.shape
-model.summary()
-
 
 def tf_model_summary(model) -> dict:
     """
@@ -149,10 +119,9 @@ def tf_model_summary(model) -> dict:
     dic_summary['layers_types'] = ";".join([layer.__class__.__name__ for layer in model.layers])
     dic_summary['layers_output'] = ";".join([f'{layer.output.shape[1]}' for layer in model.layers])
     dic_summary['layers_activation'] = ";".join([layer.activation.__name__ if isinstance(layer, Dense) else  '' for layer in model.layers])
+    dic_summary['layers_regularizer'] = ";".join([layer.kernel_regularizer.__class__.__name__ if (isinstance(layer, Dense) & (layer.kernel_regularizer is not None)) else  '' for layer in model.layers])
     return dic_summary
 
-dic_summary = tf_model_summary(model)
-pd.DataFrame.from_records([dic_summary])
 
 # What is needed for each fold:
 #
@@ -187,7 +156,7 @@ def tf_experiment_all_folds(lst_train_test, model_num_and_model:tuple) -> tuple:
     'val_auc': 'roc_auc_score_test',
     'val_f1_score': 'f1_score_test',
     'val_precision': 'precision_score_test',
-    'val_recall': 'recall_score_train',
+    'val_recall': 'recall_score_test',
     'val_loss': 'loss_train'
     }
     
@@ -202,22 +171,25 @@ def tf_experiment_all_folds(lst_train_test, model_num_and_model:tuple) -> tuple:
         lst_experiments.append(df_history)
     df = pd.concat(lst_experiments, axis=0)
     df.rename(columns=dic_columns_rename, inplace=True)
-    df_means = df.loc[df['epoch'] == 10,:].mean().round(8).to_frame().T.astype({'model_num':int, 'epoch':int})
-    return lst_experiments
-        
-
+    
+    dic_means = df.loc[df['epoch'] == 10,:].mean().round(8).to_dict()
+    return df, dic_means
+       
 def gen_tf_model_parameters():
+    """
+    Generates list of models to be checked
+    """
+    lst_optimizers = [Adadelta(), Adafactor(), Adagrad(), Adam(), Adamax(), Ftrl(), SGD()]   
+    
     lst_actication_functions = ['relu', 'sigmoid', 'softmax', 'softplus', 'softsign', 'tanh', 
                                 'selu', 'elu', 'exponential', 'leaky_relu', 'relu6', 'silu', 'hard_silu',
                                 'gelu', 'hard_sigmoid', 'mish', 'log_softmax']
-    lst_regulizers = ['l1', 'l2', None]
+    lst_regulizers = [None, 'l1', 'l2']
     dic_dense_input = {'units': [2**i for i in range(1,8)],  'activation':lst_actication_functions, 'kernel_regularizer':lst_regulizers}
     keys = dic_dense_input.keys()
     values = dic_dense_input.values()
     # Create a list of dictionaries for each combination
     lst_combinations = [dict(zip(keys, combination)) for combination in product(*values)]
-    input_layer = Input(shape=(n_dims,), name='input_layer')
-    output_layer = Dense(1, activation='sigmoid', name='output_layer')
     # Model defined again
     tf.random.set_seed(32)
     tf.keras.backend.clear_session()
@@ -225,41 +197,41 @@ def gen_tf_model_parameters():
         tf.keras.backend.clear_session()
         tf.random.set_seed(32)
         model = Sequential([
-            input_layer,
+            Input(shape=(n_dims,), name='input_layer'),
             Dense(**combination, name='dense_1'),
-            output_layer,
+            Dense(1, activation='sigmoid', name='output_layer')
         ])
-        yield model
-
-for n_model, model in enumerate(gen_tf_model_parameters()):
-    print(n_model)
-    print(model.summary())
-
-
-model.summary() 
-
-adam1 = Adam()
-model.compile(optimizer= adam1,
-            loss='binary_crossentropy',
-            metrics=['accuracy', Precision(), Recall(), F1Score(), AUC()])
-
-lst_experiments = tf_experiment_all_folds(lst_train_test, (1, model))
+        for optimizer in lst_optimizers:
+            model.compile(optimizer = optimizer,
+                loss='binary_crossentropy',
+                metrics=['accuracy', Precision(), Recall(), F1Score(), AUC()])
+            yield model
 
 
-df_means
-df
+def tf_run_experiments():
+    lst_epochs = []
+    lst_models = []
+    dir_output = get_output_folder('dnn1')
+    Path(dir_output).mkdir(parents=True, exist_ok=True)
+    
+    n_folds_file = 0 
+    num_csv_file_records = 1_000
+    for n_model, model in enumerate(gen_tf_model_parameters(), start=1):
+        print(n_model)
+        df_epochs, dic_means = tf_experiment_all_folds(lst_train_test, (n_model, model))
+        dic_model = tf_model_summary(model)
+        lst_models.append({'model_num':n_model}|dic_model|dic_means)
+        lst_epochs.append(df_epochs)
 
+        if n_model % num_csv_file_records == 0:
+            df_epochs = pd.concat(lst_epochs, axis=0)
+            df_epochs.to_csv(dir_output / f'{n_folds_file:05d}.csv', float_format='%.8f' , index=False)
+            n_folds_file += 1        
+            lst_epochs = []
 
-print([opt for opt in dir(optimizers) if not opt.startswith("_")])
+    df_models = pd.DataFrame.from_records(lst_models).astype({'model_num':int})
+    df_models.to_csv(dir_output / 'means.csv', float_format='%.8f' , index=False)
 
-  
-#     try:
-#         dic_experiment = experiment_one_fold(model, X_train, X_test, y_train, y_test)
-#         lst_experiments.append({'model_num': model_num, 'fold':fold_n,} | dic_experiment)
-#     except Exception as e:
-#         print(f'Error: {e}')
-# dic_means = pd.DataFrame.from_dict(lst_experiments).mean().round(8).to_dict()
-
-# dic_means_to_return = {'model_num': int(model_num)} | {'model_class': model.__class__.__name__} | dict(model.get_params()) | dic_means
-# lst_experiments_output = [{'model_num': int(model_num), 'fold':fold_n,} | dic_x for fold_n, dic_x in enumerate(lst_experiments)]
-# return (dic_means_to_return, lst_experiments_output)
+if __name__ == "__main__":
+    tf_run_experiments()
+    
