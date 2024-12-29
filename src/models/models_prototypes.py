@@ -1,8 +1,12 @@
 import tensorflow as tf
 
 from tensorflow.keras import Sequential
-from tensorflow.keras.layers import Dense, Input
+from tensorflow.keras.layers import Dense, Input, Dropout
 from tensorflow.keras.metrics import Precision, Recall, F1Score, AUC
+from tensorflow.keras.regularizers import l1, l2, l1_l2
+
+import tensorflow.keras.backend as K
+import numpy as np
 
 import time
 import pickle
@@ -11,9 +15,7 @@ from tensorflow.keras.callbacks import Callback
 import pandas as pd
 from src.data.make_dataset import get_list_of_numerical_variables, get_data_by_fold
 from src.models.model_experiment import train_test_folds
-
-import time
-from tensorflow.keras.callbacks import Callback
+from src.models.model_experiment import get_output_folder
 
 # Callback to measure training time (excluding metrics)
 class TimeHistoryWithoutMetrics(Callback):
@@ -38,14 +40,9 @@ class TimeHistoryWithoutMetrics(Callback):
         logs['time_train'] = training_time_without_metrics
 
 class PredictionTimeHistory(Callback):
-    def __init__(self, train_data, val_data):
+    def __init__(self, train_data):
         super().__init__()
         self.train_data = train_data
-        self.val_data = val_data
-        self.prediction_times = {
-            'train': [],
-            'val': []
-        }
 
     def on_epoch_end(self, epoch, logs=None):
         # Time predictions on training data
@@ -67,6 +64,15 @@ class PickleSizeCallback(Callback):
         serialized_model = pickle.dumps(self.model)
         logs['model_size_bytes'] = len(serialized_model)
 
+class ModelSparsityCallback(Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        total_weights = sum(weight.numpy().size for weight in self.model.weights)
+        non_zero_weights = sum(tf.math.count_nonzero(weight).numpy() for weight in self.model.weights)
+        logs['model_parameters_non_zero'] = non_zero_weights
+        logs['model_sparsity'] = round(100 - non_zero_weights / total_weights * 100, 2)
+        
+
+
 
 print(tf.__version__)
 
@@ -81,10 +87,10 @@ for fold_n in range(1,11):
     
 lst_train_test = train_test_folds(df, dic_folds, lst_numeric)
 
-
 train_time_callback = TimeHistoryWithoutMetrics()
-prediction_time_callback = PredictionTimeHistory(lst_train_test[0][0], lst_train_test[0][2])
+prediction_time_callback = PredictionTimeHistory(lst_train_test[0][0])
 model_size_callback = PickleSizeCallback()
+model_sparsity_callback = ModelSparsityCallback()
 
 n_dims = lst_train_test[0][0].shape[1]
 # with tf.device("/GPU:0"):
@@ -94,6 +100,7 @@ with tf.device("/CPU:0"):
     model = Sequential([
         Input(shape=(n_dims,), name='input_layer'),
         Dense(128, activation='relu', name='dense_1'),
+        Dropout(0.5, seed=24),
         Dense(64, activation='relu', name='dense_2'),
         Dense(1, activation='sigmoid', name='dense_3') 
     ])
@@ -103,45 +110,46 @@ with tf.device("/CPU:0"):
 
     history = model.fit(lst_train_test[0][0], lst_train_test[0][1], epochs=10, 
                         validation_data=[lst_train_test[0][2], lst_train_test[0][3]], 
-                        callbacks=[train_time_callback, prediction_time_callback, model_size_callback])
-    model.evaluate(lst_train_test[0][2], lst_train_test[0][3])
+                        callbacks=[train_time_callback, prediction_time_callback, model_size_callback, model_sparsity_callback])
 
-epoch_times = train_time_callback.epoch_train_times
+df_history = pd.DataFrame({'fold':1, 'epoch' : list(range(1, len(history.history['accuracy'])+1))} | history.history)
 
-history.history['model_size_bytes']
+model.optimizer.learning_rate.numpy()
+model.optimizer.name
+dense_layers = [layer for layer in model.layers if isinstance(layer, Dense)]
+dropout_layers = [layer for layer in model.layers if isinstance(layer, Dropout)]
+dir(dense_layers[0])
 
-history.history['epoch_train_times'] = epoch_times
-history.history['prediction_time'] = prediction_time_callback.prediction_times['train']
-history.history['val_prediction_time'] = prediction_time_callback.prediction_times['val']
+model.layers.count
+model.count_params()
+dense_layers[0].__class__.__name__
 
-pd.DataFrame(history.history)
-prediction_time_callback.prediction_times
+dense_layers[0].output.shape
+model.summary()
 
-model = tf.keras.Sequential([
-    tf.keras.layers.Input(shape=(64,)),
-    tf.keras.layers.Dense(128, activation='relu'),
-    tf.keras.layers.Dense(10, activation='softmax')
-])
 
-parameters = []
-# Add the input layer manually if it exists
-if model.input_shape:
-    input_layer_name = "input_layer"
-    input_shape = model.input_shape  # Retrieve the input shape from the model
-    parameters.append([input_layer_name, input_shape, 0, False])  # Input layer has no parameters and is not trainable
+def tf_model_summary(model) -> dict:
+    """
+    Gets the description of a model based on the model object. This will
+    be saved in the model list
+    """
+    dic_summary  = dict()
+    dic_summary['model_class'] = model.__class__.__name__ # e.g. Sequential
+    dic_summary['optimalizer'] = model.optimizer.name
+    dic_summary['learning_rate'] = float(model.optimizer.learning_rate.numpy())
+    dic_summary['layers_count_all'] = len(model.layers)
+    dic_summary['layers_count_dense'] = len([layer for layer in model.layers if isinstance(layer, Dense)])
+    dic_summary['layers_count_dropout'] = len([layer for layer in model.layers if isinstance(layer, Dropout)])
+    dic_summary['layers_count_all'] = len(model.layers)
+    dic_summary['parameters_trainable'] = model.count_params()
+    dic_summary['parameters_non_trainable'] = sum(K.count_params(w) for w in model.non_trainable_weights)
+    dic_summary['layers_types'] = ";".join([layer.__class__.__name__ for layer in model.layers])
+    dic_summary['layers_output'] = ";".join([f'{layer.output.shape[1]}' for layer in model.layers])
+    dic_summary['layers_activation'] = ";".join([layer.activation.__name__ if isinstance(layer, Dense) else  '' for layer in model.layers])
+    return dic_summary
 
-for layer in model.layers:
-    layer_name = layer.name
-
-    # Check if the layer has weights or parameters
-    try:
-        num_params = layer.count_params()
-    except AttributeError:
-        num_params = 0  # Input layers do not have parameters
-    activation = layer.activation.__name__ 
-    trainable = getattr(layer, 'trainable', False)  # Input layers are not trainable
-    parameters.append([layer_name, num_params, trainable, activation])
-print(parameters)
+dic_summary = tf_model_summary(model)
+pd.DataFrame.from_records([dic_summary])
 
 # What is needed for each fold:
 #
@@ -156,3 +164,37 @@ print(parameters)
 # loss
 # input,dense1,early_stopping,eta0,fit_intercept,l1_ratio,max_iter,n_iter_no_change,n_jobs,penalty,random_state,shuffle,tol,validation_fraction,verbose,warm_start,fold,time_train,model_size,time_pred,accuracy_score_train,f1_score_train,precision_score_train,recall_score_train,roc_auc_score_train,accuracy_score_test,f1_score_test,precision_score_test,recall_score_test,roc_auc_score_test
 # 169000.0,Perceptron,0.0001,,False,1.3,True,0.75,301,5,1,elasticnet,20,True,0.001,0.2,0,False,5.0,0.01904451,1935.0,0.00288757,0.73975309,0.82075023,0.79215502,0.86243386,0.6579659,0.71444444,0.80169944,0.77234057,0.84603175,0.62671958
+
+def tf_experiment_all_folds(lst_train_test, model_num_and_model:tuple) -> tuple:
+    """
+    Performs the same experiment on the set of folds. As a paramenter
+    gets the list of data and a tuple with model num and model compile
+    """
+    model_num, model = model_num_and_model
+    lst_experiments = []
+    n_epochs = 10
+    for fold_n, (X_train, y_train, X_test, y_test) in enumerate(lst_train_test):
+        tf.keras.backend.clear_session()
+        tf.random.set_seed(32)
+        history = model.fit(X_train, y_train, epochs=n_epochs, 
+                validation_data=[X_test, y_test], 
+                callbacks=[train_time_callback, prediction_time_callback, model_size_callback, model_sparsity_callback])
+        df_history = pd.DataFrame({'model_num': model_num, 'fold': fold_n, 'epoch' : list(range(1, n_epochs+1))} | history.history)
+        lst_experiments.append(df_history)
+    return lst_experiments
+        
+
+lst_experiments = tf_experiment_all_folds(lst_train_test, (1, model))
+df = pd.concat(lst_experiments, axis=0)
+df.loc[df['epoch'] == 10,:].mean().round(8).astype({'model_num':int})
+  
+#     try:
+#         dic_experiment = experiment_one_fold(model, X_train, X_test, y_train, y_test)
+#         lst_experiments.append({'model_num': model_num, 'fold':fold_n,} | dic_experiment)
+#     except Exception as e:
+#         print(f'Error: {e}')
+# dic_means = pd.DataFrame.from_dict(lst_experiments).mean().round(8).to_dict()
+
+# dic_means_to_return = {'model_num': int(model_num)} | {'model_class': model.__class__.__name__} | dict(model.get_params()) | dic_means
+# lst_experiments_output = [{'model_num': int(model_num), 'fold':fold_n,} | dic_x for fold_n, dic_x in enumerate(lst_experiments)]
+# return (dic_means_to_return, lst_experiments_output)
