@@ -1,6 +1,6 @@
 from src.models.model_experiment import german_experiment
 from src.models.model_repair_two_parts import calclulate_means_from_existing
-from src.models.models_prototypes import tf_run_experiments
+from src.models.model_dnn1 import tf_run_experiments
 
 if __name__ == "__main__":
     # german_experiment('knn', None)
