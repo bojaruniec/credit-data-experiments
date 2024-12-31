@@ -99,6 +99,7 @@ class ModelSparsityCallback(Callback):
     def on_epoch_end(self, epoch, logs=None):
         total_weights = sum(weight.numpy().size for weight in self.model.weights)
         non_zero_weights = sum(tf.math.count_nonzero(weight).numpy() for weight in self.model.weights)
+        logs['model_layers'] = len(self.model.layers)
         logs['model_weights'] = total_weights
         logs['model_parameters_non_zero'] = non_zero_weights
         logs['model_sparsity'] = round(100 - non_zero_weights / total_weights * 100, 2)
@@ -190,7 +191,7 @@ def gen_tf_model_parameters():
         for optimizer in lst_optimizers:
             yield combination, optimizer
 
-def tf_make_model(n_dims, parameters, optimizer):
+def tf_make_model_dnn1(n_dims, parameters, optimizer):
     """
     Returns model with parameters and optimizer
     """
@@ -203,16 +204,57 @@ def tf_make_model(n_dims, parameters, optimizer):
                 loss='binary_crossentropy',
                 )
     return model
-    
-def tf_run_experiments():
+
+
+def tf_make_model_dnn2(n_dims, parameters, optimizer):
+    """
+    Returns model with parameters and optimizer
+    """
+    model = Sequential([
+            Input(shape=(n_dims,), name='input_layer'),
+            Dense(**parameters, name='dense_1'),
+            Dense(**parameters, name='dense_2'),
+            Dense(1, activation='sigmoid', name='output_layer')
+        ])
+    model.compile(optimizer = optimizer,
+                loss='binary_crossentropy',
+                )
+    return model
+
+def tf_make_model_dnn3(n_dims, parameters, optimizer):
+    """
+    Returns model with parameters and optimizer
+    """
+    model = Sequential([
+            Input(shape=(n_dims,), name='input_layer'),
+            Dense(**parameters, name='dense_1'),
+            Dense(**parameters, name='dense_2'),
+            Dense(**parameters, name='dense_3'),
+            Dense(1, activation='sigmoid', name='output_layer')
+        ])
+    model.compile(optimizer = optimizer,
+                loss='binary_crossentropy',
+                )
+    return model
+
+
+def tf_run_experiments(dnn='dnn1'):
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Disable GPU, use CPU only    
     warnings.filterwarnings("ignore", message=".*CUDA_ERROR_NO_DEVICE.*")
     lst_train_test = get_lst_train_test()
     n_dims = lst_train_test[0][0].shape[1]
-    
+
+    global tf_make_model
+    if dnn == 'dnn1':   
+        tf_make_model = tf_make_model_dnn1
+    elif dnn == 'dnn2':  
+        tf_make_model = tf_make_model_dnn2
+    else:
+        tf_make_model = tf_make_model_dnn3
+        
     lst_epochs = []
     lst_models = []
-    dir_output = get_output_folder('dnn1')
+    dir_output = get_output_folder(dnn)
     Path(dir_output).mkdir(parents=True, exist_ok=True)
     
     n_folds_file = 1 
@@ -238,5 +280,5 @@ def tf_run_experiments():
     df_models.to_csv(dir_output / 'means.csv', float_format='%.8f' , index=False)
 
 if __name__ == "__main__":
-    tf_run_experiments()
+    tf_run_experiments('dnn1')
     

@@ -1,7 +1,5 @@
 import matplotlib.pyplot as plt
 import pandas as pd
-
-
 from itertools import combinations
 from pathlib import Path
 
@@ -55,9 +53,17 @@ def pair_graphs_german():
     
     lst_graphs2 = [
         ('perceptron', Path('reports/german-credit-data/perceptron/202412162133/means.csv')),
+        ('perceptron', Path('reports/german-credit-data/perceptron/202412162133/means.csv')),
     ]
+    
+    lst_graphs3 = [
+        ('dnn1', Path('reports/german-credit-data/dnn1/202412301742/means.csv')),
+        ('dnn2', Path('reports/german-credit-data/dnn2/202412162133/means.csv')),
+        ('dnn3', Path('reports/german-credit-data/dnn3/202412310239/means.csv')),
+    ]
+    
     lst_graphs = lst_graphs1 + lst_graphs2
-    for model_key, csv_experiments in lst_graphs2:
+    for model_key, csv_experiments in lst_graphs3:
         df = pd.read_csv(csv_experiments, usecols=lst_metrics, index_col='model_num')
         pair_graphs(df, model_key)
     
