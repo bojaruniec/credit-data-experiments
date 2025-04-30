@@ -18,7 +18,7 @@ from datetime import datetime
 from itertools import product, islice
 from functools import partial
 
-from src.data.make_dataset import get_list_of_numerical_variables, get_data_by_fold
+from src.data.make_dataset_german import get_list_of_numerical_variables, get_data_by_fold
 from src.models.model_parameters import  models_and_parameters
 
 def get_parameters_gen(dic_parameters):

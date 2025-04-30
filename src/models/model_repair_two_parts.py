@@ -1,7 +1,7 @@
 import pandas as pd
 import csv
 from pathlib import Path
-from src.data.make_dataset import get_list_of_numerical_variables, get_data_by_fold
+from src.data.make_dataset_german import get_list_of_numerical_variables, get_data_by_fold
 from src.models.model_parameters import  models_and_parameters
 from src.models.model_experiment import write_experiments_by_fold_to_csv
 

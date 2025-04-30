@@ -7,6 +7,7 @@ import csv
 import pandas as pd
 from pathlib import Path
 from sklearn.model_selection import StratifiedKFold
+from sklearn.preprocessing import MinMaxScaler
 
 def download_german_credit_data():
     """ Downloads `German Credit Data` from the UCI reporsitory
@@ -112,7 +113,7 @@ def prepare_german_credit_data():
     df.to_csv(path_out_csv, index=False)
 
 
-def get_list_of_numerical_variables() -> list:
+def get_list_of_numerical_variables_german() -> list:
     """
     Returns the list of numerical variable for a given dataset. 
     So far the dataset is fixed and it is german. 
@@ -142,7 +143,7 @@ def stratified_k_folds_german_credit_data():
         
     df = pd.read_csv(path_inp_csv)
     # list of numerical variables:
-    lst_numerical = get_list_of_numerical_variables()
+    lst_numerical = get_list_of_numerical_variables_german()
     
     # folds
     df_shuffled = df.sample(frac=1, random_state=20)
@@ -177,32 +178,39 @@ def stratified_k_folds_german_credit_data():
     df_stats_agg = pd.concat(lst_stats_df)
     df_stats_agg.to_csv(path_out_stats, index=True)
 
-def get_data_by_fold(fold:str) -> tuple:
-    """ Gets X and y by fold number from a file
-    with loc indicies of fold
-    lst1, lst2 = get_data_by_fold('fold01')
+def folds_to_csv_german():
     """
+    Converts data from the whole CSV dataset to csv and TensorFlow Dataset split by folds.
+    """
+    # Read data
     path_inp_dir = Path('data/processed/german-credit-data') 
-    path_inp_csv = path_inp_dir / 'german_folds.csv'
-
-    data = dict()
-    with open(path_inp_csv, 'r', encoding='utf-8') as f: 
-        reader = csv.reader(f) 
-        header = next(reader)  
-        lst_idx_train = []
-        lst_idx_test = []
-        for col_i, column_name in enumerate(header):
-            if column_name == fold:
-                break
-
-        for row in reader:
-            lst_idx_test.append(int(row[col_i]))
-            for i, idx_train in enumerate(row):
-                if i == col_i:
-                    continue 
-                lst_idx_train.append(int(idx_train)) 
-    return (lst_idx_train, lst_idx_test)
+    path_inp_csv = path_inp_dir / 'german.csv'
+    df_data = pd.read_csv(path_inp_csv)
+   
+    # Reaad metadata    
+    lst_numerical = get_list_of_numerical_variables_german()
         
+    # Read folds
+    path_inp_folds = path_inp_dir / 'german_folds.csv'   
+    df_folds = pd.read_csv(path_inp_folds)
+    
+    path_out_folds = Path('data/folds/german-credit-data')
+    path_out_folds.mkdir(exist_ok=True, parents=True)
+    for fold_n, fold_idx in df_folds.items():
+        # Split data
+        df_fold_test = df_data.iloc[fold_idx].copy()
+        df_fold_train = df_data[~df_data.index.isin(df_fold_test.index)].copy()
+        
+        # Normalize data
+        scaler = MinMaxScaler()
+        df_fold_train[lst_numerical] = scaler.fit_transform(df_fold_train[lst_numerical])
+        df_fold_test[lst_numerical] = scaler.transform(df_fold_test[lst_numerical])
+        # Create csv files with folds
+        df_fold_train.to_csv(path_out_folds.joinpath(f'{fold_n}_train.csv'), index=False, float_format='%.8f')
+        df_fold_test.to_csv(path_out_folds.joinpath(f'{fold_n}_test.csv'), index=False, float_format='%.8f')
+
+
+
 def main(input_filepath, output_filepath):
     """ Runs data processing scripts to turn raw data from (../raw) into
         cleaned data ready to be analyzed (saved in ../processed).

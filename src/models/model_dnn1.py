@@ -19,7 +19,7 @@ from tqdm import tqdm
 from multiprocessing import Pool
 
 import pandas as pd
-from src.data.make_dataset import get_list_of_numerical_variables, get_data_by_fold
+from src.data.make_dataset_german import get_list_of_numerical_variables, get_data_by_fold
 from src.models.model_experiment import train_test_folds
 from src.models.model_experiment import get_output_folder
 
@@ -275,7 +275,6 @@ def tf_run_experiments(dnn='dnn1'):
             lst_epochs = []
 
         print(f'Model number {n_model} finished')
-
     df_models = pd.DataFrame.from_records(lst_models).astype({'model_num':int})
     df_models.to_csv(dir_output / 'means.csv', float_format='%.8f' , index=False)
 

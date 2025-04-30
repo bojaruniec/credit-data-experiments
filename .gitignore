@@ -88,6 +88,15 @@ target/
 # Mypy cache
 .mypy_cache/
 
+# Kaggle identifier
+src/data/kaggle*.json
 # specific folder
 *_old.py
 reports/**/[0-9]*.csv
+experiments/output/*
+experiments/logs/*
+# Esternal data
+data/external/*
+data/folds/**/*.csv
+data/interim/*
+data/processed/*
