@@ -275,7 +275,6 @@ def tf_run_experiments(dnn='dnn1'):
             lst_epochs = []
 
         print(f'Model number {n_model} finished')
-
     df_models = pd.DataFrame.from_records(lst_models).astype({'model_num':int})
     df_models.to_csv(dir_output / 'means.csv', float_format='%.8f' , index=False)
 
