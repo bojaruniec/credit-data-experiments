@@ -76,7 +76,6 @@ def znajdz_pareto_max(df, x_col, y_col):
     )
     return pareto_df
 
-
 def znajdz_pareto_max_numpy(pl_data, lst_cols):
     points = pl_data.select(lst_cols).to_numpy()
     n = points.shape[0]
