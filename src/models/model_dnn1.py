@@ -19,7 +19,7 @@ from tqdm import tqdm
 from multiprocessing import Pool
 
 import pandas as pd
-from src.data.make_dataset import get_list_of_numerical_variables, get_data_by_fold
+from src.data.make_dataset_german import get_list_of_numerical_variables, get_data_by_fold
 from src.models.model_experiment import train_test_folds
 from src.models.model_experiment import get_output_folder
 
